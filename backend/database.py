@@ -415,3 +415,15 @@ class Database:
             responses.append(response)
         
         return responses
+
+# Global database instance
+_database_instance = None
+
+async def get_database() -> Database:
+    """Get global database instance"""
+    global _database_instance
+    if _database_instance is None:
+        mongo_url = os.environ['MONGO_URL']
+        db_name = os.environ['DB_NAME']
+        _database_instance = Database(mongo_url, db_name)
+    return _database_instance
