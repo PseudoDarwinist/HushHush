@@ -313,12 +313,26 @@ const StepCard = ({ icon, number, title, description }) => {
   );
 };
 
-// Vault Detail Modal Component
+// Vault Detail Modal Component - Updated with Razorpay integration
 const VaultDetailModal = ({ vault, onClose, user, apiCall, onLogin }) => {
   const [pledgeAmount, setPledgeAmount] = useState(1000);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
   const progressPercentage = vault.progress_percentage || 0;
+
+  const initializeRazorpay = () => {
+    return new Promise((resolve) => {
+      const script = document.createElement("script");
+      script.src = "https://checkout.razorpay.com/v1/checkout.js";
+      script.onload = () => {
+        resolve(true);
+      };
+      script.onerror = () => {
+        resolve(false);
+      };
+      document.body.appendChild(script);
+    });
+  };
 
   const handlePledge = async () => {
     if (!user) {
@@ -328,7 +342,10 @@ const VaultDetailModal = ({ vault, onClose, user, apiCall, onLogin }) => {
 
     try {
       setLoading(true);
-      const response = await apiCall('/pledges', {
+      setMessage('');
+
+      // Step 1: Create Razorpay order
+      const orderResponse = await apiCall('/pledges', {
         method: 'POST',
         body: JSON.stringify({
           vault_id: vault.id,
@@ -336,16 +353,78 @@ const VaultDetailModal = ({ vault, onClose, user, apiCall, onLogin }) => {
         })
       });
 
-      if (response.success) {
-        setMessage('Pledge successful! 🎉');
-        setTimeout(() => {
-          onClose();
-          window.location.reload(); // Refresh to show updated data
-        }, 2000);
+      if (!orderResponse.success) {
+        throw new Error(orderResponse.message || 'Failed to create order');
       }
+
+      // Step 2: Initialize Razorpay
+      const res = await initializeRazorpay();
+      if (!res) {
+        throw new Error('Razorpay SDK failed to load');
+      }
+
+      // Step 3: Create Razorpay payment
+      const options = {
+        key: orderResponse.data.key,
+        amount: orderResponse.data.amount,
+        currency: orderResponse.data.currency,
+        name: "HushHush",
+        description: `Pledge for: ${vault.title}`,
+        order_id: orderResponse.data.order_id,
+        handler: async function (response) {
+          try {
+            // Step 4: Verify payment on backend
+            const verifyResponse = await apiCall('/payments/verify', {
+              method: 'POST',
+              body: JSON.stringify({
+                razorpay_payment_id: response.razorpay_payment_id,
+                razorpay_order_id: response.razorpay_order_id,
+                razorpay_signature: response.razorpay_signature
+              })
+            });
+
+            if (verifyResponse.success) {
+              setMessage('🎉 Pledge successful! Payment authorized.');
+              setTimeout(() => {
+                onClose();
+                window.location.reload(); // Refresh to show updated data
+              }, 2000);
+            } else {
+              setMessage('❌ Payment verification failed. Please contact support.');
+            }
+          } catch (error) {
+            console.error('Payment verification error:', error);
+            setMessage('❌ Payment verification failed. Please contact support.');
+          }
+        },
+        modal: {
+          ondismiss: function() {
+            setMessage('❌ Payment cancelled');
+            setLoading(false);
+          }
+        },
+        prefill: {
+          name: user.username,
+          email: user.email,
+        },
+        theme: {
+          color: "#06b6d4"
+        },
+        method: {
+          upi: true,
+          card: true,
+          netbanking: true,
+          wallet: false
+        }
+      };
+
+      const paymentObject = new window.Razorpay(options);
+      paymentObject.open();
+      setLoading(false);
+
     } catch (error) {
-      setMessage('Failed to pledge. Please try again.');
-    } finally {
+      console.error('Pledge error:', error);
+      setMessage('❌ ' + error.message);
       setLoading(false);
     }
   };
