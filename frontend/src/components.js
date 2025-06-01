@@ -550,13 +550,13 @@ const VaultDetailModal = ({ vault, onClose, user, apiCall, onLogin }) => {
             ) : (
               <>
                 <DollarSign className="w-5 h-5" />
-                <span>{user ? `Pledge ₹${pledgeAmount.toLocaleString()}` : 'Login to Pledge'}</span>
+                <span>{user ? `Pay ₹${pledgeAmount.toLocaleString()} via UPI/Card` : 'Login to Pledge'}</span>
               </>
             )}
           </motion.button>
 
           <p className="text-center text-sm text-gray-400">
-            If the goal isn't reached, you'll get a full refund
+            Secure payment via Razorpay • Funds held until goal is reached • Full refund if goal not met
           </p>
         </div>
       </motion.div>
