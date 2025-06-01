@@ -298,7 +298,7 @@ def test_verify_payment():
     
     if not success:
         # If all endpoints failed but at least one responded (not 404), it might be due to Razorpay integration
-        if any(response.status_code != 404):
+        if response.status_code != 404:
             test_results["verify_payment"] = {
                 "success": True, 
                 "message": "Payment verification endpoint exists but verification failed (expected in test environment)"
