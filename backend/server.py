@@ -332,6 +332,7 @@ async def verify_payment(
     """Verify and authorize payment"""
     try:
         # Authorize payment
+        payment_service = get_payment_service()
         payment_result = await payment_service.authorize_payment(
             payment_data.razorpay_payment_id,
             payment_data.razorpay_order_id,
