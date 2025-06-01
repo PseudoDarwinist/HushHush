@@ -277,4 +277,11 @@ class PaymentService:
             # Log error but don't raise to avoid webhook failures
 
 # Global payment service instance
-payment_service = PaymentService()
+_payment_service = None
+
+def get_payment_service() -> PaymentService:
+    """Get payment service instance (lazy initialization)"""
+    global _payment_service
+    if _payment_service is None:
+        _payment_service = PaymentService()
+    return _payment_service
