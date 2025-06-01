@@ -198,6 +198,49 @@ class UserStats(BaseModel):
     total_listeners: int
     verified_users: int
 
+# Payment Models
+class RazorpayOrder(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    razorpay_order_id: str
+    user_id: str
+    vault_id: str
+    amount: int  # Amount in paise
+    currency: str = "INR"
+    status: PaymentStatus = PaymentStatus.CREATED
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    notes: Dict[str, Any] = {}
+
+class RazorpayPayment(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    razorpay_payment_id: str
+    razorpay_order_id: str
+    razorpay_signature: Optional[str] = None
+    user_id: str
+    vault_id: str
+    amount: int  # Amount in paise
+    currency: str = "INR"
+    status: PaymentStatus = PaymentStatus.CREATED
+    method: Optional[str] = None  # upi, card, netbanking
+    vpa: Optional[str] = None  # For UPI payments
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    authorized_at: Optional[datetime] = None
+    captured_at: Optional[datetime] = None
+    refunded_at: Optional[datetime] = None
+
+class PaymentCreate(BaseModel):
+    vault_id: str
+    amount: float  # Amount in rupees
+
+class PaymentVerify(BaseModel):
+    razorpay_payment_id: str
+    razorpay_order_id: str
+    razorpay_signature: str
+
+class RefundRequest(BaseModel):
+    payment_id: str
+    amount: Optional[float] = None  # Partial refund amount
+    reason: Optional[str] = None
+
 # API Response Models
 class APIResponse(BaseModel):
     success: bool
