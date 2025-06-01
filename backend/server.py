@@ -10,7 +10,7 @@ from typing import List, Optional
 from backend.models import *
 from backend.database import Database
 from backend.auth import create_access_token, get_current_user
-from backend.payment_service import payment_service
+from backend.payment_service import get_payment_service
 
 # Load environment variables
 ROOT_DIR = Path(__file__).parent
