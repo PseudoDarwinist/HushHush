@@ -5,8 +5,8 @@ import os
 from typing import Dict, Any, Optional
 from datetime import datetime
 from fastapi import HTTPException
-from models import PaymentStatus, RazorpayOrder, RazorpayPayment
-from database import get_database
+from backend.models import PaymentStatus, RazorpayOrder, RazorpayPayment
+from backend.database import get_database
 
 class PaymentService:
     def __init__(self):
