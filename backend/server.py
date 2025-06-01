@@ -379,6 +379,7 @@ async def refund_payment(
     try:
         # TODO: Add admin check
         
+        payment_service = get_payment_service()
         refund_result = await payment_service.refund_payment(
             payment_id,
             refund_data.amount,
