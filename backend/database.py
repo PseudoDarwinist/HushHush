@@ -168,7 +168,7 @@ class Database:
         user_vaults = [v for v in vaults if v.whisperer_id == user_id]
         return await self._convert_to_vault_responses(user_vaults)
     
-    # Pledge operations
+    # Pledge operations - Updated for payment integration
     async def create_pledge(self, pledge_data: PledgeCreate, user_id: str) -> Pledge:
         # Check if vault exists
         vault = await self.get_vault_by_id(pledge_data.vault_id)
@@ -182,6 +182,7 @@ class Database:
             vault_id=pledge_data.vault_id,
             user_id=user_id,
             amount=pledge_data.amount,
+            status=PaymentStatus.CREATED,  # Start in created status
             referrer_id=pledge_data.referrer_id,
             referral_credit_earned=referral_credit
         )
@@ -189,19 +190,98 @@ class Database:
         # Insert pledge
         await self.db.pledges.insert_one(pledge.dict())
         
-        # Update vault pledged amount and backers count
-        await self.update_vault(pledge_data.vault_id, {
-            "pledged_amount": vault.pledged_amount + pledge_data.amount,
-            "backers_count": vault.backers_count + 1
-        })
-        
-        # Check if funding goal is reached
-        if vault.pledged_amount + pledge_data.amount >= vault.funding_goal:
-            await self.update_vault(pledge_data.vault_id, {
-                "status": VaultStatus.FUNDED
-            })
+        # Note: Don't update vault amounts yet - wait for payment authorization
         
         return pledge
+    
+    async def update_pledge_payment_info(self, pledge_id: str, razorpay_order_id: str, status: PaymentStatus) -> bool:
+        """Update pledge with payment order information"""
+        result = await self.db.pledges.update_one(
+            {"id": pledge_id},
+            {
+                "$set": {
+                    "razorpay_order_id": razorpay_order_id,
+                    "status": status,
+                    "updated_at": datetime.utcnow()
+                }
+            }
+        )
+        return result.modified_count > 0
+    
+    async def update_pledge_by_order_id(self, order_id: str, payment_id: str, status: PaymentStatus) -> bool:
+        """Update pledge when payment is authorized"""
+        result = await self.db.pledges.update_one(
+            {"razorpay_order_id": order_id},
+            {
+                "$set": {
+                    "razorpay_payment_id": payment_id,
+                    "status": status,
+                    "authorized_at": datetime.utcnow()
+                }
+            }
+        )
+        return result.modified_count > 0
+    
+    async def update_pledge_status(self, pledge_id: str, status: PaymentStatus) -> bool:
+        """Update pledge status"""
+        update_data = {"status": status}
+        if status == PaymentStatus.CAPTURED:
+            update_data["captured_at"] = datetime.utcnow()
+        elif status == PaymentStatus.REFUNDED:
+            update_data["refunded_at"] = datetime.utcnow()
+        
+        result = await self.db.pledges.update_one(
+            {"id": pledge_id},
+            {"$set": update_data}
+        )
+        return result.modified_count > 0
+    
+    async def update_pledge_status_by_payment_id(self, payment_id: str, status: PaymentStatus) -> bool:
+        """Update pledge status by payment ID"""
+        update_data = {"status": status}
+        if status == PaymentStatus.CAPTURED:
+            update_data["captured_at"] = datetime.utcnow()
+        elif status == PaymentStatus.REFUNDED:
+            update_data["refunded_at"] = datetime.utcnow()
+        
+        result = await self.db.pledges.update_one(
+            {"razorpay_payment_id": payment_id},
+            {"$set": update_data}
+        )
+        return result.modified_count > 0
+    
+    async def get_vault_by_order_id(self, order_id: str) -> Optional[Vault]:
+        """Get vault associated with a payment order"""
+        pledge_data = await self.db.pledges.find_one({"razorpay_order_id": order_id})
+        if pledge_data:
+            return await self.get_vault_by_id(pledge_data["vault_id"])
+        return None
+    
+    async def get_vault_pledges(self, vault_id: str, status: PaymentStatus) -> List[Pledge]:
+        """Get all pledges for a vault with specific status"""
+        cursor = self.db.pledges.find({"vault_id": vault_id, "status": status})
+        pledges = await cursor.to_list(length=1000)
+        return [Pledge(**pledge) for pledge in pledges]
+    
+    async def update_vault_pledged_amount(self, vault_id: str, new_amount: float) -> bool:
+        """Update vault pledged amount"""
+        result = await self.db.vaults.update_one(
+            {"id": vault_id},
+            {"$set": {"pledged_amount": new_amount}}
+        )
+        return result.modified_count > 0
+    
+    async def update_vault_status(self, vault_id: str, status: VaultStatus) -> bool:
+        """Update vault status"""
+        update_data = {"status": status}
+        if status == VaultStatus.UNLOCKED:
+            update_data["unlocked_at"] = datetime.utcnow()
+        
+        result = await self.db.vaults.update_one(
+            {"id": vault_id},
+            {"$set": update_data}
+        )
+        return result.modified_count > 0
     
     async def get_user_pledges(self, user_id: str) -> List[PledgeResponse]:
         cursor = self.db.pledges.find({"user_id": user_id}).sort("created_at", -1)
