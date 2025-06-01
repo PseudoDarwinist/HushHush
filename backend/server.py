@@ -414,6 +414,7 @@ async def capture_vault_payments(vault_id: str):
             if pledge.razorpay_payment_id:
                 try:
                     # Capture payment
+                    payment_service = get_payment_service()
                     capture_result = await payment_service.capture_payment(
                         pledge.razorpay_payment_id,
                         pledge.amount
