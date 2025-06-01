@@ -251,25 +251,53 @@ async def get_vault_content(
         logger.error(f"Get vault content error: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
-# Pledge endpoints
+# Pledge endpoints - Updated with payment integration
 @api_router.post("/pledges", response_model=APIResponse)
 async def create_pledge(
     pledge_data: PledgeCreate,
     current_user_id: str = Depends(get_current_user)
 ):
-    """Create a new pledge"""
+    """Create a new pledge with payment integration"""
     try:
         # Verify user can pledge
         user = await database.get_user_by_id(current_user_id)
         if not user or user.user_type not in [UserType.LISTENER, UserType.BOTH]:
             raise HTTPException(status_code=403, detail="Only listeners can create pledges")
         
+        # Verify vault exists and is live
+        vault = await database.get_vault_by_id(pledge_data.vault_id)
+        if not vault:
+            raise HTTPException(status_code=404, detail="Vault not found")
+        if vault.status != VaultStatus.LIVE:
+            raise HTTPException(status_code=400, detail="Vault is not accepting pledges")
+        
+        # Create Razorpay order
+        order_data = await payment_service.create_order(
+            user_id=current_user_id,
+            vault_id=pledge_data.vault_id,
+            amount=pledge_data.amount
+        )
+        
+        # Create pledge in pending status
         pledge = await database.create_pledge(pledge_data, current_user_id)
+        
+        # Update pledge with order details
+        await database.update_pledge_payment_info(
+            pledge.id, 
+            order_data["order_id"], 
+            PaymentStatus.CREATED
+        )
         
         return APIResponse(
             success=True,
-            message="Pledge created successfully",
-            data={"pledge_id": pledge.id}
+            message="Payment order created successfully",
+            data={
+                "pledge_id": pledge.id,
+                "order_id": order_data["order_id"],
+                "amount": order_data["amount"],
+                "currency": order_data["currency"],
+                "key": order_data["key"]
+            }
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
