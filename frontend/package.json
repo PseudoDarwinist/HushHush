@@ -7,6 +7,7 @@
     "cra-template": "1.2.0",
     "framer-motion": "^12.15.0",
     "lucide-react": "^0.511.0",
+    "razorpay": "^2.9.6",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-router-dom": "^7.5.1",
