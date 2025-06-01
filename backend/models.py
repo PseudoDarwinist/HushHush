@@ -169,7 +169,7 @@ class PledgeResponse(BaseModel):
     vault_id: str
     vault_title: str
     amount: float
-    status: str
+    status: PaymentStatus
     referral_credit_earned: float
     created_at: datetime
 
