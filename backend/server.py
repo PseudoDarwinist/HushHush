@@ -272,6 +272,7 @@ async def create_pledge(
             raise HTTPException(status_code=400, detail="Vault is not accepting pledges")
         
         # Create Razorpay order
+        payment_service = get_payment_service()
         order_data = await payment_service.create_order(
             user_id=current_user_id,
             vault_id=pledge_data.vault_id,
