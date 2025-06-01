@@ -149,11 +149,13 @@ class Pledge(BaseModel):
     vault_id: str
     user_id: str
     amount: float
-    status: str = "authorized"  # authorized, captured, refunded
+    status: PaymentStatus = PaymentStatus.CREATED
     referrer_id: Optional[str] = None
     referral_credit_earned: float = 0.0
-    payment_id: Optional[str] = None
+    razorpay_order_id: Optional[str] = None
+    razorpay_payment_id: Optional[str] = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
+    authorized_at: Optional[datetime] = None
     captured_at: Optional[datetime] = None
     refunded_at: Optional[datetime] = None
 
