@@ -30,6 +30,13 @@ class Category(str, Enum):
     SPORTS = "Sports Controversies"
     HISTORICAL = "Historical Mysteries"
 
+class PaymentStatus(str, Enum):
+    CREATED = "created"
+    AUTHORIZED = "authorized"
+    CAPTURED = "captured"
+    REFUNDED = "refunded"
+    FAILED = "failed"
+
 # User Models
 class User(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
