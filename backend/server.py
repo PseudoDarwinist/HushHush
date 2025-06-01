@@ -444,6 +444,7 @@ async def razorpay_webhook(request: Request):
         signature = request.headers.get("X-Razorpay-Signature", "")
         
         # Verify signature
+        payment_service = get_payment_service()
         if not payment_service.verify_webhook_signature(payload, signature):
             raise HTTPException(status_code=400, detail="Invalid signature")
         
