@@ -322,6 +322,142 @@ async def get_my_pledges(current_user_id: str = Depends(get_current_user)):
         logger.error(f"Get pledges error: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
+# Payment endpoints
+@api_router.post("/payments/verify", response_model=APIResponse)
+async def verify_payment(
+    payment_data: PaymentVerify,
+    current_user_id: str = Depends(get_current_user)
+):
+    """Verify and authorize payment"""
+    try:
+        # Authorize payment
+        payment_result = await payment_service.authorize_payment(
+            payment_data.razorpay_payment_id,
+            payment_data.razorpay_order_id,
+            payment_data.razorpay_signature
+        )
+        
+        # Update pledge status
+        await database.update_pledge_by_order_id(
+            payment_data.razorpay_order_id,
+            payment_data.razorpay_payment_id,
+            PaymentStatus.AUTHORIZED
+        )
+        
+        # Update vault pledged amount and check if funding goal reached
+        vault = await database.get_vault_by_order_id(payment_data.razorpay_order_id)
+        if vault:
+            new_pledged_amount = vault.pledged_amount + (payment_result["amount"])
+            await database.update_vault_pledged_amount(vault.id, new_pledged_amount)
+            
+            # Check if funding goal reached
+            if new_pledged_amount >= vault.funding_goal:
+                await database.update_vault_status(vault.id, VaultStatus.FUNDED)
+                # Schedule payment captures for all pledges
+                await capture_vault_payments(vault.id)
+        
+        return APIResponse(
+            success=True,
+            message="Payment authorized successfully",
+            data=payment_result
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Payment verification error: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+@api_router.post("/payments/{payment_id}/refund", response_model=APIResponse)
+async def refund_payment(
+    payment_id: str,
+    refund_data: RefundRequest,
+    current_user_id: str = Depends(get_current_user)
+):
+    """Refund a payment (admin only or automated)"""
+    try:
+        # TODO: Add admin check
+        
+        refund_result = await payment_service.refund_payment(
+            payment_id,
+            refund_data.amount,
+            refund_data.reason or "Goal not reached"
+        )
+        
+        # Update pledge status
+        await database.update_pledge_status_by_payment_id(
+            payment_id,
+            PaymentStatus.REFUNDED
+        )
+        
+        return APIResponse(
+            success=True,
+            message="Payment refunded successfully",
+            data=refund_result
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Payment refund error: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+# Helper function to capture payments when goal is reached
+async def capture_vault_payments(vault_id: str):
+    """Capture all authorized payments for a vault when funding goal is reached"""
+    try:
+        # Get all authorized pledges for this vault
+        authorized_pledges = await database.get_vault_pledges(vault_id, PaymentStatus.AUTHORIZED)
+        
+        for pledge in authorized_pledges:
+            if pledge.razorpay_payment_id:
+                try:
+                    # Capture payment
+                    capture_result = await payment_service.capture_payment(
+                        pledge.razorpay_payment_id,
+                        pledge.amount
+                    )
+                    
+                    # Update pledge status
+                    await database.update_pledge_status(pledge.id, PaymentStatus.CAPTURED)
+                    
+                except Exception as e:
+                    logger.error(f"Failed to capture payment {pledge.razorpay_payment_id}: {e}")
+        
+        # Mark vault as unlocked
+        await database.update_vault_status(vault_id, VaultStatus.UNLOCKED)
+        
+    except Exception as e:
+        logger.error(f"Error capturing vault payments: {e}")
+
+from fastapi import Request
+import json
+
+@api_router.post("/webhooks/razorpay")
+async def razorpay_webhook(request: Request):
+    """Handle Razorpay webhooks"""
+    try:
+        # Get raw payload and signature
+        payload = await request.body()
+        signature = request.headers.get("X-Razorpay-Signature", "")
+        
+        # Verify signature
+        if not payment_service.verify_webhook_signature(payload, signature):
+            raise HTTPException(status_code=400, detail="Invalid signature")
+        
+        # Parse payload
+        event_data = json.loads(payload.decode())
+        event_type = event_data.get("event")
+        
+        # Handle webhook event
+        await payment_service.handle_webhook_event(event_type, event_data)
+        
+        return {"status": "success"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Webhook error: {e}")
+        raise HTTPException(status_code=500, detail="Webhook processing failed")
+
 # Comment endpoints
 @api_router.post("/comments", response_model=APIResponse)
 async def create_comment(
